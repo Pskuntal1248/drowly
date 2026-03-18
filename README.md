@@ -1,4 +1,4 @@
-# 🎨 Scribble - Multiplayer Drawing & Guessing Game
+# 🎨 Drowly - Multiplayer Drawing & Guessing Game
 
 A real-time multiplayer drawing and guessing game built with Spring Boot and React. Players take turns drawing while others try to guess the word. Fast and accurate guesses earn more points!
 
