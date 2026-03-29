@@ -63,7 +63,7 @@ public class GameController {
                 config.setMaxPlayers((Integer) configMap.get("maxPlayers"));
                 config.setPlayersPerIpLimit((Integer) configMap.get("playersPerIpLimit"));
                 config.setCustomWordsPerTurn((Integer) configMap.get("customWordsPerTurn"));
-                config.setPrivate((Boolean) configMap.get("isPrivate"));
+                config.setPrivateRoom((Boolean) configMap.get("isPrivate"));
                 config.setLobbyName((String) configMap.get("lobbyName"));
                 
                 // Parse custom words list
