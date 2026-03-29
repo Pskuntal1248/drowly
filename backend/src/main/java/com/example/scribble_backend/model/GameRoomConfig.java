@@ -3,6 +3,8 @@ package com.example.scribble_backend.model;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.Data;
 
 @Data
@@ -15,6 +17,7 @@ public class GameRoomConfig {
     private int playersPerIpLimit = 999;
     private int customWordsPerTurn = 3; // word choices for drawer (1-5)
     private List<String> customWords = new ArrayList<>(); // custom word list
-    private boolean isPrivate = false; // public or private lobby
+    @JsonProperty("isPrivate")
+    private boolean privateRoom = false; // public or private lobby
     private String lobbyName = ""; // lobby name
 }
