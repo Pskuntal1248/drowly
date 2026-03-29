@@ -52,7 +52,7 @@ public class LobbyController {
             if (configMap.containsKey("playersPerIpLimit")) config.setPlayersPerIpLimit((Integer) configMap.get("playersPerIpLimit"));
             if (configMap.containsKey("customWordsPerTurn")) config.setCustomWordsPerTurn((Integer) configMap.get("customWordsPerTurn"));
             if (configMap.containsKey("customWords")) config.setCustomWords((List<String>) configMap.get("customWords"));
-            if (configMap.containsKey("isPrivate")) config.setPrivate((Boolean) configMap.get("isPrivate"));
+            if (configMap.containsKey("isPrivate")) config.setPrivateRoom((Boolean) configMap.get("isPrivate"));
             if (configMap.containsKey("lobbyName")) config.setLobbyName((String) configMap.get("lobbyName"));
         }
         
