@@ -74,7 +74,7 @@ public class GameService {
             room.setPlayersPerIpLimit(config.getPlayersPerIpLimit());
             room.setCustomWordsPerTurn(config.getCustomWordsPerTurn());
             room.setCustomWords(config.getCustomWords());
-            room.setPrivate(config.isPrivate());
+            room.setPrivateRoom(config.isPrivateRoom());
             room.setLobbyName(config.getLobbyName());
             room.setRoundTime(config.getDrawingTime());
         }
@@ -134,7 +134,7 @@ public class GameService {
 
     public Collection<GameRoom> getAllPublicRooms() {
         return rooms.values().stream()
-                .filter(room -> !room.isPrivate() && !room.isGameRunning() && !room.isGameOver() && !room.getPlayers().isEmpty())
+                .filter(room -> !room.isPrivateRoom() && !room.isGameRunning() && !room.isGameOver() && !room.getPlayers().isEmpty())
                 .toList();
     }
     
@@ -190,7 +190,7 @@ public class GameService {
         List<String> roomsToRemove = new ArrayList<>();
         
         for (GameRoom room : rooms.values()) {
-            long threshold = room.isPrivate() ? privateInactiveMs : publicInactiveMs;
+            long threshold = room.isPrivateRoom() ? privateInactiveMs : publicInactiveMs;
             
             if ((room.isInactive(threshold) || room.getPlayers().isEmpty()) && !room.isGameRunning()) {
                 roomsToRemove.add(room.getRoomId());
@@ -252,8 +252,6 @@ public class GameService {
         room.setWordChosen(false);
         room.setCurrentWord(null);
 
-        calculateHintTimes(room);
-
         Player drawer = players.get(room.getDrawerIndex());
         room.setCurrentDrawerSessionId(drawer.getSessionId());
     }
@@ -297,18 +295,42 @@ public class GameService {
     }
     
     private void calculateHintTimes(GameRoom room) {
+        String word = room.getCurrentWord();
+        if (word == null || word.isEmpty()) return;
+        
         int drawTime = room.getDrawingTime();
+        
+        int letterCount = 0;
+        for (char c : word.toCharArray()) {
+            if (c != ' ' && c != '-') letterCount++;
+        }
+        
+        int maxHints = Math.max(1, letterCount / 2);
+        
+        if (letterCount <= 3) {
+            maxHints = 1;
+        }
+        
+        if (drawTime <= 45) {
+            maxHints = Math.min(maxHints, 1);
+        } else if (drawTime <= 90) {
+            maxHints = Math.min(maxHints, 2);
+        }
+        
         List<Integer> hintTimes = new ArrayList<>();
         
-        int numHints = Math.max(2, Math.min(5, drawTime / 30));
-        int startBuffer = 15;
-        int availableTime = drawTime - startBuffer;
-        int interval = availableTime / (numHints + 1);
+        int startTime = (int)(drawTime * 0.6);
+        int endTime = (int)(drawTime * 0.15);
         
-        for (int i = 1; i <= numHints; i++) {
-            int hintTime = drawTime - (startBuffer + (interval * i));
-            if (hintTime > 0) {
-                hintTimes.add(hintTime);
+        if (maxHints == 1) {
+            hintTimes.add((startTime + endTime) / 2);
+        } else {
+            int interval = (startTime - endTime) / (maxHints - 1);
+            for (int i = 0; i < maxHints; i++) {
+                int hintTime = startTime - (interval * i);
+                if (hintTime > 0) {
+                    hintTimes.add(hintTime);
+                }
             }
         }
         
@@ -327,6 +349,8 @@ public class GameService {
         room.setWordChosen(true);
         room.setRoundTime(room.getDrawingTime()); // Start the drawing timer
         room.getWordChoices().clear();
+        
+        calculateHintTimes(room);
         
         return true;
     }
