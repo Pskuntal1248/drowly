@@ -116,8 +116,18 @@ public class GameController {
         GameRoom room = gameService.getRoom(roomId);
         if (room != null) {
             room.updateActivity(); // Track activity
-            if ("CLEAR".equals(message.getType())) room.clearHistory();
-            else room.addStroke(message);
+            if ("CLEAR".equals(message.getType())) {
+                room.clearHistory();
+            } else if ("UNDO".equals(message.getType())) {
+                // Remove last stroke from history but don't add UNDO to history
+                List<DrawMessage> history = room.getDrawHistory();
+                if (!history.isEmpty()) {
+                    history.remove(history.size() - 1);
+                }
+            } else {
+                room.addStroke(message);
+            }
+            // Broadcast to all players regardless of type
             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/draw", message);
         }
     }

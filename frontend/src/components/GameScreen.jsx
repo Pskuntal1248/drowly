@@ -141,6 +141,14 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
     if (data.type === 'CLEAR') {
       ctx.fillStyle = '#FFFFFF'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
+      undoStack.current = []
+      return
+    }
+
+    if (data.type === 'UNDO') {
+      if (undoStack.current.length === 0) return
+      const snapshot = undoStack.current.pop()
+      ctx.putImageData(snapshot, 0, 0)
       return
     }
 
@@ -193,12 +201,19 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
   }, [roomId])
   
   const handleUndo = () => {
+    if (!isMyTurn) return
     if (undoStack.current.length === 0) return
+    
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const snapshot = undoStack.current.pop()
     ctx.putImageData(snapshot, 0, 0)
+    
+    // Broadcast undo action to all players
+    stompClient.send(`/app/draw/${roomId}`, {}, JSON.stringify({
+      type: 'UNDO'
+    }))
   }
 
   useEffect(() => {
@@ -340,8 +355,20 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
 
     subs.push(stompClient.subscribe(`/topic/room/${roomId}/draw`, (msg) => {
       const data = JSON.parse(msg.body)
+      
+      // Save snapshot before applying any change (for undo)
+      const canvas = canvasRef.current
+      if (canvas && data.type !== 'UNDO') {
+        const ctx = canvas.getContext('2d')
+        undoStack.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
+        if (undoStack.current.length > 20) undoStack.current.shift()
+      }
+      
       if (data.type === 'CLEAR') {
         drawHistory.current = []
+        undoStack.current = []
+      } else if (data.type === 'UNDO') {
+        // Don't add UNDO to history, just render it
       } else {
         drawHistory.current.push(data)
       }
@@ -378,8 +405,20 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
 
     subs.push(stompClient.subscribe('/user/queue/draw', (msg) => {
       const data = JSON.parse(msg.body)
+      
+      // Save snapshot before applying any change (for undo)
+      const canvas = canvasRef.current
+      if (canvas && data.type !== 'UNDO') {
+        const ctx = canvas.getContext('2d')
+        undoStack.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
+        if (undoStack.current.length > 20) undoStack.current.shift()
+      }
+      
       if (data.type === 'CLEAR') {
         drawHistory.current = []
+        undoStack.current = []
+      } else if (data.type === 'UNDO') {
+        // Don't add UNDO to history
       } else {
         drawHistory.current.push(data)
       }
