@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.Data;
 
 @Data
@@ -20,7 +22,8 @@ public class GameRoom {
     private int playersPerIpLimit = 999;
     private int customWordsPerTurn = 3;
     private List<String> customWords = new ArrayList<>();
-    private boolean isPrivate = false;
+    @JsonProperty("isPrivate")
+    private boolean privateRoom = false;
     private String lobbyName = "";
     
     private List<String> wordChoices = new ArrayList<>();
