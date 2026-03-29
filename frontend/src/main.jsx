@@ -4,6 +4,11 @@ import { HeroUIProvider } from "@heroui/react"
 import './index.css'
 import App from './App.jsx'
 
+// Apply saved dark mode preference
+if (localStorage.getItem('drowly-theme') === 'dark') {
+  document.documentElement.classList.add('dark')
+}
+
 // Register service worker for PWA and offline support
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
