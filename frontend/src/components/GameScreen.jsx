@@ -12,7 +12,9 @@ import {
   Trophy,
   Users,
   MessageSquare,
-  Palette
+  Palette,
+  PaintBucket,
+  Undo2
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -31,6 +33,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
   const [activeTab, setActiveTab] = useState('canvas')
   const canvasRef = useRef(null)
   const drawHistory = useRef([])
+  const undoStack = useRef([])
   const messagesEndRef = useRef(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentTool, setCurrentTool] = useState('pen')
@@ -77,6 +80,58 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
     }
   }, [stompClient])
 
+  const floodFillCanvas = (canvas, x, y, fillColor) => {
+    const ctx = canvas.getContext('2d')
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const data = imageData.data
+    const width = canvas.width
+    const height = canvas.height
+
+    const px = Math.round(x)
+    const py = Math.round(y)
+    if (px < 0 || px >= width || py < 0 || py >= height) return
+
+    const startIdx = (py * width + px) * 4
+    const startR = data[startIdx], startG = data[startIdx + 1], startB = data[startIdx + 2], startA = data[startIdx + 3]
+
+    const tempCanvas = document.createElement('canvas')
+    const tempCtx = tempCanvas.getContext('2d')
+    tempCtx.fillStyle = fillColor
+    tempCtx.fillRect(0, 0, 1, 1)
+    const fc = tempCtx.getImageData(0, 0, 1, 1).data
+    const fillR = fc[0], fillG = fc[1], fillB = fc[2]
+
+    if (Math.abs(startR - fillR) < 30 && Math.abs(startG - fillG) < 30 && Math.abs(startB - fillB) < 30) return
+
+    const tolerance = 32
+    const match = (idx) => {
+      return Math.abs(data[idx] - startR) <= tolerance &&
+        Math.abs(data[idx + 1] - startG) <= tolerance &&
+        Math.abs(data[idx + 2] - startB) <= tolerance &&
+        Math.abs(data[idx + 3] - startA) <= tolerance
+    }
+
+    const stack = [[px, py]]
+    const visited = new Uint8Array(width * height)
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop()
+      if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue
+      const pos = cy * width + cx
+      if (visited[pos]) continue
+      const idx = pos * 4
+      if (!match(idx)) continue
+      visited[pos] = 1
+      data[idx] = fillR
+      data[idx + 1] = fillG
+      data[idx + 2] = fillB
+      data[idx + 3] = 255
+      stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1])
+    }
+
+    ctx.putImageData(imageData, 0, 0)
+  }
+
   const renderDrawing = (data) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -86,6 +141,13 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
     if (data.type === 'CLEAR') {
       ctx.fillStyle = '#FFFFFF'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    if (data.type === 'FILL') {
+      const fx = Math.round((data.currX / 1000) * canvas.width)
+      const fy = Math.round((data.currY / 1000) * canvas.height)
+      floodFillCanvas(canvas, fx, fy, data.color)
       return
     }
 
@@ -130,12 +192,28 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
     return () => clearTimeout(timer)
   }, [roomId])
   
+  const handleUndo = () => {
+    if (undoStack.current.length === 0) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const snapshot = undoStack.current.pop()
+    ctx.putImageData(snapshot, 0, 0)
+  }
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (document.activeElement.id === 'chat-input') return
       
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        handleUndo()
+        return
+      }
+      
       if (e.key === 'q' || e.key === 'Q') setCurrentTool('pen')
       else if (e.key === 'e' || e.key === 'E') setCurrentTool('eraser')
+      else if (e.key === 'f' || e.key === 'F') setCurrentTool('fill')
       else if (e.key === '1') setBrushSize(8)
       else if (e.key === '2') setBrushSize(16)
       else if (e.key === '3') setBrushSize(24)
@@ -337,11 +415,40 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
     return { canvasX, canvasY }
   }
 
+  const handleFill = (x, y) => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+
+    undoStack.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
+    if (undoStack.current.length > 20) undoStack.current.shift()
+
+    floodFillCanvas(canvas, x, y, currentColor)
+
+    stompClient.send(`/app/draw/${roomId}`, {}, JSON.stringify({
+      type: 'FILL',
+      currX: Math.round((x / canvas.width) * 1000),
+      currY: Math.round((y / canvas.height) * 1000),
+      color: currentColor,
+      lineWidth: 0,
+      prevX: 0,
+      prevY: 0
+    }))
+  }
+
   const startDrawing = (e) => {
     if (!isMyTurn) return
 
-
     const { canvasX, canvasY } = getCoordinates(e)
+
+    if (currentTool === 'fill') {
+      handleFill(canvasX, canvasY)
+      return
+    }
+
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    undoStack.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
+    if (undoStack.current.length > 20) undoStack.current.shift()
 
     setIsDrawing(true)
     setLastPos({ x: canvasX, y: canvasY })
@@ -441,7 +548,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
   }
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col bg-gray-50 overflow-hidden select-none overscroll-none">
+    <div className="flex h-[100dvh] w-full flex-col bg-[#f8f5f0] dark:bg-black overflow-hidden select-none overscroll-none">
       {connectionLost && (
         <div className="absolute top-0 left-0 right-0 bg-red-500 text-white text-center py-2 text-sm font-bold z-50 animate-pulse">
           ⚠️ Connection Lost - Please refresh the page
@@ -449,7 +556,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
       )}
       
       <motion.header 
-        className="flex h-14 lg:h-16 items-center justify-between border-b border-gray-200 bg-white px-4 lg:px-6 shadow-sm shrink-0 z-20"
+        className="flex h-14 lg:h-16 items-center justify-between border-b border-gray-200 dark:border-amber-900/30 bg-white dark:bg-[#121212] px-4 lg:px-6 shadow-sm shrink-0 z-20"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
@@ -457,7 +564,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           <motion.button 
             onClick={onBack}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 rounded-lg bg-gray-100 p-2 lg:px-3 lg:py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            className="flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-black p-2 lg:px-3 lg:py-1.5 text-sm font-medium text-gray-700 dark:text-amber-200 hover:bg-gray-200 dark:hover:bg-[#1a1a1a]"
           >
             <ArrowLeft size={18} />
             <span className="hidden lg:inline">Back</span>
@@ -465,20 +572,20 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           
           <div className="flex items-center gap-2">
             <Trophy size={18} className="text-amber-500" />
-            <span className="text-sm lg:text-lg font-bold text-gray-900">
+            <span className="text-sm lg:text-lg font-bold text-gray-900 dark:text-amber-100">
               {getRoundInfo()}
             </span>
           </div>
         </div>
         
         <div className="flex flex-1 justify-center mx-2">
-          <div className="rounded-xl bg-gray-100 px-4 py-1 lg:px-8 lg:py-2 text-center truncate max-w-[150px] lg:max-w-none">
+          <div className="rounded-xl bg-gray-100 dark:bg-black px-4 py-1 lg:px-8 lg:py-2 text-center truncate max-w-[150px] lg:max-w-none">
             {isMyTurn ? (
-              <span className="text-lg lg:text-2xl font-bold tracking-widest text-indigo-600 truncate">
+              <span className="text-lg lg:text-2xl font-bold tracking-widest text-amber-600 dark:text-amber-400 truncate">
                 {gameState?.currentWord || '...'}
               </span>
             ) : (
-              <span className="text-lg lg:text-2xl font-bold tracking-[0.3em] text-gray-800 truncate">
+              <span className="text-lg lg:text-2xl font-bold tracking-[0.3em] text-gray-800 dark:text-amber-100 truncate">
                 {gameState?.hintWord || '_ _ _'}
               </span>
             )}
@@ -486,9 +593,9 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
         </div>
         
         <div className="flex items-center gap-2 lg:gap-4">
-          <div className="hidden lg:flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1">
-            <span className="text-xs font-bold text-amber-700">ROOM</span>
-            <span className="font-mono text-base font-bold text-amber-600">{roomId}</span>
+          <div className="hidden lg:flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-1">
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400">ROOM</span>
+            <span className="font-mono text-base font-bold text-amber-600 dark:text-amber-300">{roomId}</span>
             <button onClick={copyRoomCode} className="ml-2">
               {copiedCode ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} className="text-amber-600" />}
             </button>
@@ -511,10 +618,10 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
       <main className="flex-1 relative overflow-hidden lg:p-4 lg:flex lg:gap-4">
         
         <div className={cn(
-          "absolute inset-0 lg:static lg:w-64 lg:flex flex-col bg-white lg:rounded-xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 z-10",
+          "absolute inset-0 lg:static lg:w-64 lg:flex flex-col bg-white dark:bg-[#121212] lg:rounded-xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 z-10",
           activeTab === 'rank' ? 'flex' : 'hidden lg:flex'
         )}>
-          <div className="flex items-center justify-center gap-2 border-b border-gray-100 p-3 text-sm font-bold text-gray-700 shrink-0">
+          <div className="flex items-center justify-center gap-2 border-b border-gray-100 dark:border-amber-900/20 p-3 text-sm font-bold text-gray-700 dark:text-amber-200 shrink-0">
             <Users size={16} />
             Players ({gameState?.players?.length || 0})
           </div>
@@ -524,16 +631,16 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
                 key={player.sessionId} 
                 className={cn(
                   "mb-1.5 flex items-center gap-2 rounded-lg p-2",
-                  player.sessionId === mySessionId ? "bg-blue-50 ring-1 ring-blue-200" : "bg-gray-50",
+                  player.sessionId === mySessionId ? "bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-200 dark:ring-amber-700" : "bg-gray-50 dark:bg-black",
                   player.sessionId === gameState.currentDrawerSessionId && "ring-2 ring-amber-400"
                 )}
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 dark:bg-amber-900/30 text-xs font-bold text-gray-700 dark:text-amber-300">
                   {idx + 1}
                 </span>
                 <div className="flex-1 overflow-hidden">
-                  <div className="truncate text-sm font-bold text-gray-900">{player.username}</div>
-                  <div className="text-xs font-medium text-gray-500">{player.score} pts</div>
+                  <div className="truncate text-sm font-bold text-gray-900 dark:text-amber-100">{player.username}</div>
+                  <div className="text-xs font-medium text-gray-500 dark:text-amber-400/60">{player.score} pts</div>
                 </div>
                 {player.sessionId === gameState.currentDrawerSessionId && <span>✏️</span>}
               </div>
@@ -545,7 +652,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           "absolute inset-0 lg:static lg:flex-1 flex flex-col gap-2 lg:gap-4 z-0",
           activeTab === 'canvas' ? 'flex' : 'hidden lg:flex'
         )}>
-          <div className="relative flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 overflow-hidden touch-none">
+          <div className="relative flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 overflow-hidden touch-none">
             <canvas
               ref={canvasRef}
               className="h-full w-full cursor-crosshair touch-none block"
@@ -557,14 +664,14 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
             />
             
             {(!gameState?.isGameRunning && !gameState?.gameRunning && !gameState?.currentDrawerSessionId) && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/95 backdrop-blur-sm p-4">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/95 dark:bg-black/95 backdrop-blur-sm p-4">
                 <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-                  <h2 className="text-2xl lg:text-3xl font-extrabold text-gray-900">WAITING...</h2>
+                  <h2 className="text-2xl lg:text-3xl font-extrabold text-gray-900 dark:text-amber-100">WAITING...</h2>
                   
-                  <div className="w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-6">
-                    <div className="mb-2 text-xs font-bold text-amber-800 uppercase">Room Code</div>
+                  <div className="w-full rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-6">
+                    <div className="mb-2 text-xs font-bold text-amber-800 dark:text-amber-400 uppercase">Room Code</div>
                     <div className="flex items-center justify-center gap-3">
-                      <span className="font-mono text-4xl font-black tracking-widest text-amber-600">{roomId}</span>
+                      <span className="font-mono text-4xl font-black tracking-widest text-amber-600 dark:text-amber-400">{roomId}</span>
                       <button
                         onClick={copyRoomCode}
                         className="rounded-lg bg-blue-500 p-2 text-white hover:bg-blue-600"
@@ -574,7 +681,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
                     </div>
                   </div>
 
-                  <div className="font-medium text-gray-500">
+                  <div className="font-medium text-gray-500 dark:text-amber-300/60">
                     {gameState?.players?.length || 0} player(s) ready
                   </div>
 
@@ -591,7 +698,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           </div>
 
           {isMyTurn && (
-            <div className="shrink-0 bg-white p-2 lg:p-3 lg:rounded-xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 overflow-x-auto">
+            <div className="shrink-0 bg-white dark:bg-[#121212] p-2 lg:p-3 lg:rounded-xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 overflow-x-auto">
               <div className="flex items-center gap-3 min-w-max px-2">
                 <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                   <button
@@ -606,8 +713,17 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
                   >
                     <Eraser size={18} />
                   </button>
+                  <button
+                    onClick={() => setCurrentTool('fill')}
+                    className={cn("p-2 rounded-md", currentTool === 'fill' ? "bg-white shadow-sm text-amber-600" : "text-gray-500")}
+                  >
+                    <PaintBucket size={18} />
+                  </button>
                   <button onClick={handleClearCanvas} className="p-2 rounded-md text-gray-500 hover:text-red-600">
                     <Trash2 size={18} />
+                  </button>
+                  <button onClick={handleUndo} className="p-2 rounded-md text-gray-500 hover:text-blue-600">
+                    <Undo2 size={18} />
                   </button>
                 </div>
 
@@ -649,34 +765,34 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
         </div>
 
         <div className={cn(
-          "absolute inset-0 lg:static lg:w-80 lg:flex flex-col bg-white lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 z-10",
+          "absolute inset-0 lg:static lg:w-80 lg:flex flex-col bg-white dark:bg-[#121212] lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 z-10",
           activeTab === 'chat' ? 'flex' : 'hidden lg:flex'
         )}>
-          <div className="flex items-center justify-center gap-2 border-b border-gray-100 p-3 font-bold text-gray-700 shrink-0">
+          <div className="flex items-center justify-center gap-2 border-b border-gray-100 dark:border-amber-900/20 p-3 font-bold text-gray-700 dark:text-amber-200 shrink-0">
             <MessageSquare size={18} />
             Chat
           </div>
-          <div className="flex items-center justify-center gap-2 border-b border-gray-100 px-3 py-2 bg-amber-50 shrink-0">
-            <span className="text-[10px] font-bold text-amber-700">ROOM CODE:</span>
-            <span className="font-mono text-sm font-bold text-amber-600">{roomId}</span>
+          <div className="flex items-center justify-center gap-2 border-b border-gray-100 dark:border-amber-900/20 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 shrink-0">
+            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">ROOM CODE:</span>
+            <span className="font-mono text-sm font-bold text-amber-600 dark:text-amber-300">{roomId}</span>
             <button onClick={copyRoomCode} className="ml-1 active:scale-95">
               {copiedCode ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} className="text-amber-600" />}
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-gray-50 p-3">
+          <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-black p-3">
             <div className="flex flex-col gap-2">
               {messages.map((msg, idx) => (
                 <div 
                   key={idx} 
                   className={cn(
                     "rounded-lg px-3 py-2 text-sm shadow-sm",
-                    msg.type === 'SYSTEM' ? "bg-blue-50 text-blue-800 border border-blue-100 text-center text-xs" : 
-                    msg.type === 'GUESS_CORRECT' ? "bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold text-center" : 
-                    "bg-white text-gray-800 border border-gray-100"
+                    msg.type === 'SYSTEM' ? "bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border border-blue-100 dark:border-blue-800/30 text-center text-xs" : 
+                    msg.type === 'GUESS_CORRECT' ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/30 font-bold text-center" : 
+                    "bg-white dark:bg-[#121212] text-gray-800 dark:text-amber-100 border border-gray-100 dark:border-amber-900/20"
                   )}
                 >
                   {msg.type !== 'SYSTEM' && msg.type !== 'GUESS_CORRECT' && (
-                    <span className="font-bold text-indigo-600 block text-xs mb-0.5">{msg.sender}</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400 block text-xs mb-0.5">{msg.sender}</span>
                   )}
                   <span>{msg.content}</span>
                 </div>
@@ -684,7 +800,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
               <div ref={messagesEndRef} />
             </div>
           </div>
-          <div className="border-t border-gray-100 p-3 shrink-0">
+          <div className="border-t border-gray-100 dark:border-amber-900/20 p-3 shrink-0">
             <input
               id="chat-input"
               type="text"
@@ -694,32 +810,32 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               disabled={isMyTurn}
               className={cn(
-                "w-full rounded-xl border-2 border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium outline-none transition-all",
-                isMyTurn ? "cursor-not-allowed opacity-50" : "focus:border-indigo-500 focus:bg-white"
+                "w-full rounded-xl border-2 border-gray-200 dark:border-amber-900/30 bg-gray-50 dark:bg-black dark:text-amber-100 px-4 py-2.5 text-sm font-medium outline-none transition-all",
+                isMyTurn ? "cursor-not-allowed opacity-50" : "focus:border-amber-500 focus:bg-white dark:focus:bg-[#121212]"
               )}
             />
           </div>
         </div>
       </main>
 
-      <nav className="lg:hidden flex items-center justify-around bg-white border-t border-gray-200 px-2 py-2 shrink-0 z-30 pb-safe">
+      <nav className="lg:hidden flex items-center justify-around bg-white dark:bg-[#121212] border-t border-gray-200 dark:border-amber-900/30 px-2 py-2 shrink-0 z-30 pb-safe">
         <button 
           onClick={() => setActiveTab('rank')}
-          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'rank' ? "text-indigo-600 bg-indigo-50" : "text-gray-500")}
+          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'rank' ? "text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "text-gray-500 dark:text-amber-400/50")}
         >
           <Users size={20} />
           <span className="text-[10px] font-bold mt-1">Rank</span>
         </button>
         <button 
           onClick={() => setActiveTab('canvas')}
-          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'canvas' ? "text-indigo-600 bg-indigo-50" : "text-gray-500")}
+          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'canvas' ? "text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "text-gray-500 dark:text-amber-400/50")}
         >
           <Palette size={20} />
           <span className="text-[10px] font-bold mt-1">Draw</span>
         </button>
         <button 
           onClick={() => setActiveTab('chat')}
-          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'chat' ? "text-indigo-600 bg-indigo-50" : "text-gray-500")}
+          className={cn("flex flex-col items-center p-2 rounded-lg", activeTab === 'chat' ? "text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "text-gray-500 dark:text-amber-400/50")}
         >
           <div className="relative">
             <MessageSquare size={20} />
@@ -736,8 +852,8 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-              <h2 className="text-xl font-bold text-center mb-4">Choose a Word</h2>
+            <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#121212] p-6 shadow-2xl">
+              <h2 className="text-xl font-bold text-center mb-4 dark:text-amber-100">Choose a Word</h2>
               <div className="flex flex-col gap-3">
                 {gameState.wordChoices.map((word, idx) => (
                   <button
@@ -746,7 +862,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
                       stompClient.send(`/app/chooseWord/${roomId}`, {}, JSON.stringify({ word }))
                       setShowWordChoice(false)
                     }}
-                    className="w-full rounded-xl bg-indigo-600 py-3 text-lg font-bold text-white shadow-md active:scale-95"
+                    className="w-full rounded-xl bg-amber-600 hover:bg-amber-700 py-3 text-lg font-bold text-white shadow-md active:scale-95"
                   >
                     {word}
                   </button>
@@ -764,16 +880,16 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center">
-              <h1 className="text-2xl font-bold mb-4">Game Over!</h1>
+            <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#121212] p-6 shadow-2xl text-center">
+              <h1 className="text-2xl font-bold mb-4 dark:text-amber-100">Game Over!</h1>
               <div className="space-y-2 mb-6">
                 {gameState?.players?.sort((a, b) => b.score - a.score).slice(0, 3).map((player, idx) => (
-                  <div key={player.sessionId} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                  <div key={player.sessionId} className="flex items-center justify-between bg-gray-50 dark:bg-black p-3 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-500">#{idx + 1}</span>
-                      <span className="font-bold">{player.username}</span>
+                      <span className="font-bold text-gray-500 dark:text-amber-400/60">#{idx + 1}</span>
+                      <span className="font-bold dark:text-amber-100">{player.username}</span>
                     </div>
-                    <span className="font-bold text-indigo-600">{player.score}</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400">{player.score}</span>
                   </div>
                 ))}
               </div>
