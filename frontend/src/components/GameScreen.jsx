@@ -14,7 +14,9 @@ import {
   MessageSquare,
   Palette,
   PaintBucket,
-  Undo2
+  Undo2,
+  Moon,
+  Sun
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -28,6 +30,22 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
   const [showGameOver, setShowGameOver] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
   const [showWordChoice, setShowWordChoice] = useState(false)
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('drowly-theme') === 'dark'
+    }
+    return false
+  })
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('drowly-theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('drowly-theme', 'light')
+    }
+  }, [isDark])
   const [connectionLost, setConnectionLost] = useState(false)
   
   const [activeTab, setActiveTab] = useState('canvas')
@@ -640,6 +658,15 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
             </button>
           </div>
 
+          <motion.button
+            onClick={() => setIsDark(!isDark)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 dark:bg-black shadow-sm ring-1 ring-amber-200 dark:ring-amber-800 transition-colors"
+          >
+            {isDark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-amber-700" />}
+          </motion.button>
+
           <motion.div 
             animate={{ scale: timer <= 10 ? [1, 1.1, 1] : 1 }}
             transition={{ duration: 0.5, repeat: timer <= 10 ? Infinity : 0 }}
@@ -691,7 +718,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           "absolute inset-0 lg:static lg:flex-1 flex flex-col gap-2 lg:gap-4 z-0",
           activeTab === 'canvas' ? 'flex' : 'hidden lg:flex'
         )}>
-          <div className="relative flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 overflow-hidden touch-none">
+          <div className="relative flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:lg:ring-amber-900/30 dark:lg:shadow-[0_0_0_1px_rgba(217,171,72,0.2)] overflow-hidden touch-none">
             <canvas
               ref={canvasRef}
               className="h-full w-full cursor-crosshair touch-none block"
@@ -739,50 +766,50 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
           {isMyTurn && (
             <div className="shrink-0 bg-white dark:bg-[#121212] p-2 lg:p-3 lg:rounded-xl lg:shadow-sm lg:ring-1 lg:ring-gray-200 dark:ring-amber-900/30 overflow-x-auto">
               <div className="flex items-center gap-3 min-w-max px-2">
-                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#2a2a2a] rounded-lg p-1">
                   <button
                     onClick={() => setCurrentTool('pen')}
-                    className={cn("p-2 rounded-md", currentTool === 'pen' ? "bg-white shadow-sm text-blue-600" : "text-gray-500")}
+                    className={cn("p-2 rounded-md", currentTool === 'pen' ? "bg-white dark:bg-[#3a3a3a] shadow-sm text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400")}
                   >
                     <Pen size={18} />
                   </button>
                   <button
                     onClick={() => setCurrentTool('eraser')}
-                    className={cn("p-2 rounded-md", currentTool === 'eraser' ? "bg-white shadow-sm text-red-600" : "text-gray-500")}
+                    className={cn("p-2 rounded-md", currentTool === 'eraser' ? "bg-white dark:bg-[#3a3a3a] shadow-sm text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}
                   >
                     <Eraser size={18} />
                   </button>
                   <button
                     onClick={() => setCurrentTool('fill')}
-                    className={cn("p-2 rounded-md", currentTool === 'fill' ? "bg-white shadow-sm text-amber-600" : "text-gray-500")}
+                    className={cn("p-2 rounded-md", currentTool === 'fill' ? "bg-white dark:bg-[#3a3a3a] shadow-sm text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400")}
                   >
                     <PaintBucket size={18} />
                   </button>
-                  <button onClick={handleClearCanvas} className="p-2 rounded-md text-gray-500 hover:text-red-600">
+                  <button onClick={handleClearCanvas} className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400">
                     <Trash2 size={18} />
                   </button>
-                  <button onClick={handleUndo} className="p-2 rounded-md text-gray-500 hover:text-blue-600">
+                  <button onClick={handleUndo} className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
                     <Undo2 size={18} />
                   </button>
                 </div>
 
-                <div className="w-px h-8 bg-gray-200" />
+                <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-                <div className="grid grid-rows-2 grid-flow-col gap-0.5 bg-gray-200 p-1 rounded-lg">
+                <div className="grid grid-rows-2 grid-flow-col gap-0.5 bg-gray-200 dark:bg-[#2a2a2a] p-1 rounded-lg">
                   {colorPalette.map((color) => (
                     <button
                       key={color}
                       onClick={() => { setCurrentColor(color); setCurrentTool('pen'); }}
                       className={cn(
-                        "w-6 h-6 rounded-sm border border-gray-300 hover:scale-110 transition-transform",
-                        currentColor === color && currentTool === 'pen' ? "ring-2 ring-gray-900 z-10" : ""
+                        "w-6 h-6 rounded-sm border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform",
+                        currentColor === color && currentTool === 'pen' ? "ring-2 ring-gray-900 dark:ring-amber-400 z-10" : ""
                       )}
                       style={{ backgroundColor: color }}
                     />
                   ))}
                 </div>
 
-                <div className="w-px h-8 bg-gray-200" />
+                <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
                 <div className="flex items-center gap-1">
                   {brushSizes.map((size) => (
@@ -791,10 +818,10 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
                       onClick={() => setBrushSize(size)}
                       className={cn(
                         "w-7 h-7 flex items-center justify-center rounded-md",
-                        brushSize === size ? "bg-blue-100 ring-1 ring-blue-500" : "bg-gray-50"
+                        brushSize === size ? "bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-500" : "bg-gray-50 dark:bg-[#2a2a2a]"
                       )}
                     >
-                      <div className="rounded-full bg-gray-900" style={{ width: size / 2, height: size / 2 }} />
+                      <div className="rounded-full bg-gray-900 dark:bg-gray-200" style={{ width: size / 2, height: size / 2 }} />
                     </button>
                   ))}
                 </div>
