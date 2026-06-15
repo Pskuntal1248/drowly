@@ -60,7 +60,7 @@ export default function LoginScreen({ username, setUsername, onPlayClick }) {
         onClick={() => setIsDark(!isDark)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
-        className="absolute top-4 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/80 dark:bg-[#121212]/80 shadow-md backdrop-blur-sm ring-1 ring-amber-200 dark:ring-amber-800 transition-colors"
+        className="absolute top-4 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white dark:bg-[#1a1a1a] shadow-md ring-1 ring-amber-200 dark:ring-amber-800 transition-colors"
       >
         {isDark ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-amber-700" />}
       </motion.button>
@@ -71,7 +71,7 @@ export default function LoginScreen({ username, setUsername, onPlayClick }) {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
       >
-        <Card className="w-full shadow-2xl border-none bg-white/80 dark:bg-[#121212]/90 backdrop-blur-sm" isBlurred>
+        <Card className="w-full shadow-2xl border-none bg-white dark:bg-[#1a1a1a]">
             <CardHeader className="flex flex-col gap-2 items-center justify-center pt-6 pb-2">
                 <motion.div
                     initial={{ y: -20, opacity: 0 }}
@@ -123,7 +123,7 @@ export default function LoginScreen({ username, setUsername, onPlayClick }) {
                         color="secondary"
                         variant="shadow"
                         onPress={onPlayClick}
-                        className="w-full font-bold text-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/20"
+                        className="w-full font-bold text-lg bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20 transition-colors"
                         startContent={<Gamepad2 className="h-5 w-5" />}
                     >
                         Start Playing
