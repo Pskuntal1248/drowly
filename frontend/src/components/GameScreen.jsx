@@ -703,7 +703,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
             />
             
             {(!gameState?.isGameRunning && !gameState?.gameRunning && !gameState?.currentDrawerSessionId) && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/95 dark:bg-black/95 backdrop-blur-sm p-4">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white dark:bg-black p-4">
                 <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
                   <h2 className="text-2xl lg:text-3xl font-extrabold text-gray-900 dark:text-amber-100">WAITING...</h2>
                   
@@ -886,7 +886,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
       <AnimatePresence>
         {showWordChoice && gameState?.wordChoices && (
           <motion.div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -915,7 +915,7 @@ export default function GameScreen({ stompClient, username, roomId, mySessionId,
       <AnimatePresence>
         {showGameOver && (
           <motion.div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
